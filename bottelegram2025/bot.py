@@ -1,5 +1,6 @@
 import os
-
+import datetime
+import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -8,7 +9,7 @@ user_status = {}
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")  # ← GUNAKAN environment variable
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Halo! Gunakan /keluar saat Anda keluar, dan /kembali saat kembali.")
@@ -26,13 +27,16 @@ async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Timer keluar dimulai. Anda punya 15 menit untuk kembali.")
 
+    # Gunakan run_coroutine_threadsafe untuk menjalankan fungsi async dari thread apscheduler
     def check_back():
         if user_status.get(user_id, {}).get("status") == "keluar":
-            context.bot.send_message(
-                chat_id=user_id,
-                text="⚠️ Anda belum kembali dalam 15 menit!"
+            asyncio.run_coroutine_threadsafe(
+                context.bot.send_message(
+                    chat_id=user_id,
+                    text="⚠️ Anda belum kembali dalam 15 menit!"
+                ),
+                context.application.loop
             )
-            # Bisa ditambahkan: kirim ke grup HR/log
             print(f"[ALERT] {username} belum kembali sejak {now.strftime('%H:%M:%S')}")
 
     scheduler.add_job(check_back, trigger='date', run_date=now + datetime.timedelta(minutes=15))
@@ -50,4 +54,3 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("keluar", keluar))
 app.add_handler(CommandHandler("kembali", kembali))
 
-app.run_polling()
