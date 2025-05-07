@@ -1,23 +1,36 @@
 import os
 import datetime
 import asyncio
+import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from apscheduler.schedulers.background import BackgroundScheduler
 
+# 🔧 Logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# 🧠 Variabel Global
 user_status = {}
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-TOKEN = os.getenv("BOT_TOKEN")  # ← GUNAKAN environment variable
+# ✅ Ambil token dari environment
+TOKEN = os.getenv("BOT_TOKEN")
 
+# 🚀 Command /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Halo! Gunakan /keluar saat Anda keluar, dan /kembali saat kembali.")
 
+# 🚶‍♂️ Command /keluar
 async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username or update.message.from_user.full_name
+    user = update.message.from_user
     now = datetime.datetime.now()
+
+    username = user.username if user.username else f"{user.first_name} {user.last_name or ''}".strip()
 
     user_status[user_id] = {
         "status": "keluar",
@@ -27,7 +40,7 @@ async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Timer keluar dimulai. Anda punya 15 menit untuk kembali.")
 
-    # Gunakan run_coroutine_threadsafe untuk menjalankan fungsi async dari thread apscheduler
+    # Scheduler untuk cek 15 menit kemudian
     def check_back():
         if user_status.get(user_id, {}).get("status") == "keluar":
             asyncio.run_coroutine_threadsafe(
@@ -37,10 +50,11 @@ async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ),
                 context.application.loop
             )
-            print(f"[ALERT] {username} belum kembali sejak {now.strftime('%H:%M:%S')}")
+            logging.warning(f"[ALERT] {username} belum kembali sejak {now.strftime('%H:%M:%S')}")
 
     scheduler.add_job(check_back, trigger='date', run_date=now + datetime.timedelta(minutes=15))
 
+# 🔁 Command /kembali
 async def kembali(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_status[user_id] = {
@@ -49,8 +63,10 @@ async def kembali(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     await update.message.reply_text("✅ Selamat datang kembali!")
 
+# 🛠️ Setup Aplikasi
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("keluar", keluar))
 app.add_handler(CommandHandler("kembali", kembali))
 
+app.run_polling()
