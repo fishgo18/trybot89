@@ -1,10 +1,9 @@
 import os
 import datetime
-import asyncio
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # 🔧 Logging
 logging.basicConfig(
@@ -12,19 +11,23 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# 🌐 Status user disimpan di memori
+# 🌐 Simpan status user
 user_status = {}
-scheduler = BackgroundScheduler()
+
+# 🗓 Scheduler berbasis asyncio (bukan thread)
+scheduler = AsyncIOScheduler()
 scheduler.start()
 
-# 🔑 Ambil token dari environment
+# 🔑 Token dari environment (gunakan .env di Railway atau Replit)
 TOKEN = os.getenv("BOT_TOKEN")
 
-# 🚀 Command /start
+# 🚀 /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Halo! Gunakan /keluar saat Anda keluar, dan /kembali saat kembali.")
+    await update.message.reply_text(
+        "Halo! Gunakan /keluar saat Anda keluar, dan /kembali saat kembali."
+    )
 
-# 🟡 Command /keluar
+# 🟡 /keluar command
 async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user = update.message.from_user
@@ -40,22 +43,23 @@ async def keluar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("✅ Timer keluar dimulai. Anda punya 15 menit untuk kembali.")
 
-    # Fungsi pengecekan 15 menit kemudian
-    def check_back():
+    # ✅ Fungsi async untuk pengecekan
+    async def check_back():
         if user_status.get(user_id, {}).get("status") == "keluar":
-            asyncio.run_coroutine_threadsafe(
-                context.application.bot.send_message(
-                    chat_id=user_id,
-                    text="⚠️ Anda belum kembali dalam 15 menit!"
-                ),
-                context.application.loop
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="⚠️ Anda belum kembali dalam 15 menit!"
             )
             logging.warning(f"[ALERT] {username} belum kembali sejak {now.strftime('%H:%M:%S')}")
 
-    # Jadwalkan 15 menit dari sekarang
-    scheduler.add_job(check_back, trigger='date', run_date=now + datetime.timedelta(minutes=15))
+    # ⏱ Jadwalkan 15 menit ke depan
+    scheduler.add_job(
+        check_back,
+        trigger='date',
+        run_date=now + datetime.timedelta(minutes=15)
+    )
 
-# 🟢 Command /kembali
+# 🟢 /kembali command
 async def kembali(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     user_status[user_id] = {
@@ -64,7 +68,7 @@ async def kembali(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     await update.message.reply_text("✅ Selamat datang kembali!")
 
-# 🛠️ Setup Bot
+# 🛠 Setup & handler
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("keluar", keluar))
